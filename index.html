@@ -271,7 +271,7 @@
             formData.append('addressProof', uploadedFiles.address);
             formData.append('offerLetter', uploadedFiles.offer);
 
-            const webhookUrl = 'https://7145a4d7df44.ngrok-free.app/webhook-test/onboarding-form-submit'; // Replace with your n8n webhook URL
+            const webhookUrl = '/api/submit'; // Changed from localhost
 
             let attempts = 0;
             const maxAttempts = 3;
