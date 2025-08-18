@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blue Data Consulting - Document Upload</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            min-height: 100vh;
+        }
+        .progress-fill {
+            transition: width 0.6s ease;
+        }
+        .upload-section {
+            transition: all 0.3s ease;
+        }
+        .upload-section.active {
+            border-color: #6366f1;
+            background: #f0f4ff;
+        }
+        .upload-section.completed {
+            border-color: #10b981;
+            background: #ecfdf5;
+        }
+        .file-info {
+            display: none;
+        }
+        .file-info.show {
+            display: block;
+        }
+        .loading {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 0.5rem;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .alert {
+            transition: opacity 0.3s ease;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-4xl w-full overflow-hidden">
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-center py-12 px-6 relative">
+            <div class="absolute inset-0 bg-[radial-gradient(circle,rgba(255,255,255,0.1)_0%,transparent_70%)] animate-pulse"></div>
+            <h1 class="text-4xl font-bold relative z-10">📄 Document Upload</h1>
+            <p class="text-lg mt-2 opacity-90 relative z-10">Please upload the required documents</p>
+        </div>
+
+        <!-- Content -->
+        <div class="p-8">
+            <!-- Progress Indicator -->
+            <div class="text-center mb-10">
+                <div class="flex justify-center gap-4 mb-4">
+                    <div class="step w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600" id="step1">1</div>
+                    <div class="step w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600" id="step2">2</div>
+                    <div class="step w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600" id="step3">3</div>
+                    <div class="step w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600" id="step4">✓</div>
+                </div>
+                <div class="bg-gray-200 h-2 rounded-full overflow-hidden">
+                    <div class="progress-fill bg-gradient-to-r from-indigo-500 to-purple-600 h-full rounded-full" id="progressFill" style="width: 0%"></div>
+                </div>
+                <p class="mt-4 text-gray-600">Complete all three document uploads to proceed</p>
+            </div>
+
+            <!-- Upload Sections -->
+            <div class="space-y-6">
+                <!-- Identity Proof -->
+                <div class="upload-section active border-2 border-dashed border-gray-300 rounded-2xl p-6 text-center" id="identitySection">
+                    <h3 class="text-xl font-semibold text-gray-800">🆔 Identity Proof</h3>
+                    <p class="text-gray-600 mt-2">Upload your Driver's License, Passport, or Government ID</p>
+                    <label for="identityFile" class="mt-4 inline-block px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg cursor-pointer hover:from-indigo-600 hover:to-purple-700 transition-all shadow-md">Choose File</label>
+                    <input type="file" id="identityFile" class="hidden" accept=".pdf,.jpg,.jpeg,.png" onchange="handleFileUpload('identity')">
+                    <div class="file-info mt-4 bg-white p-4 rounded-lg shadow-sm" id="identityInfo">
+                        <p><strong>Selected:</strong> <span id="identityFileName"></span></p>
+                        <p><strong>Size:</strong> <span id="identityFileSize"></span></p>
+                    </div>
+                </div>
+
+                <!-- Address Proof -->
+                <div class="upload-section border-2 border-dashed border-gray-300 rounded-2xl p-6 text-center" id="addressSection">
+                    <h3 class="text-xl font-semibold text-gray-800">🏠 Address Proof</h3>
+                    <p class="text-gray-600 mt-2">Upload Utility Bill, Bank Statement, or Lease Agreement (not older than 3 months)</p>
+                    <label for="addressFile" class="mt-4 inline-block px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg cursor-pointer hover:from-indigo-600 hover:to-purple-700 transition-all shadow-md">Choose File</label>
+                    <input type="file" id="addressFile" class="hidden" accept=".pdf,.jpg,.jpeg,.png" onchange="handleFileUpload('address')">
+                    <div class="file-info mt-4 bg-white p-4 rounded-lg shadow-sm" id="addressInfo">
+                        <p><strong>Selected:</strong> <span id="addressFileName"></span></p>
+                        <p><strong>Size:</strong> <span id="addressFileSize"></span></p>
+                    </div>
+                </div>
+
+                <!-- Offer Letter -->
+                <div class="upload-section border-2 border-dashed border-gray-300 rounded-2xl p-6 text-center" id="offerSection">
+                    <h3 class="text-xl font-semibold text-gray-800">📋 Signed Offer Letter</h3>
+                    <p class="text-gray-600 mt-2">Upload the signed offer letter we sent you</p>
+                    <label for="offerFile" class="mt-4 inline-block px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg cursor-pointer hover:from-indigo-600 hover:to-purple-700 transition-all shadow-md">Choose File</label>
+                    <input type="file" id="offerFile" class="hidden" accept=".pdf,.jpg,.jpeg,.png" onchange="handleFileUpload('offer')">
+                    <div class="file-info mt-4 bg-white p-4 rounded-lg shadow-sm" id="offerInfo">
+                        <p><strong>Selected:</strong> <span id="offerFileName"></span></p>
+                        <p><strong>Size:</strong> <span id="offerFileSize"></span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="flex justify-between mt-8">
+                <a href="/onboarding" class="px-6 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-lg hover:from-gray-600 hover:to-gray-700 transition-all shadow-md">← Back</a>
+                <button id="submitBtn" class="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all shadow-md disabled:opacity-50" disabled onclick="submitDocuments()">Submit Documents</button>
+            </div>
+
+            <!-- Alert -->
+            <div id="alert" class="hidden mt-4 p-4 bg-red-100 text-red-700 rounded-lg"></div>
+        </div>
+    </div>
+
+    <script>
+        let uploadedFiles = {
+            identity: null,
+            address: null,
+            offer: null
+        };
+
+        let formConfig = {
+            candidateName: "",
+            candidateEmail: "",
+            candidatePhone: "",
+            position: "",
+            department: "",
+            startDate: "",
+            buddyEmail: "",
+            buddyName: "",
+            hrRep: "",
+            recordId: "",
+            formUrl: ""
+        };
+
+        // Initialize formConfig with query parameters
+        function initializeFormConfig() {
+            const urlParams = new URLSearchParams(window.location.search);
+            formConfig.candidateName = urlParams.get('candidateName') || 'Unknown Name';
+            formConfig.candidateEmail = urlParams.get('candidateEmail') || 'unknown@example.com';
+            formConfig.candidatePhone = urlParams.get('candidatePhone') || 'Unknown Phone';
+            formConfig.position = urlParams.get('position') || 'Unknown Position';
+            formConfig.department = urlParams.get('department') || 'Unknown Department';
+            formConfig.startDate = urlParams.get('startDate') || 'Unknown Date';
+            formConfig.buddyEmail = urlParams.get('buddyEmail') || 'unknown@bluedataconsulting.in';
+            formConfig.buddyName = urlParams.get('buddyName') || 'Unknown Buddy';
+            formConfig.hrRep = urlParams.get('hrRep') || 'Unknown HR';
+            formConfig.recordId = urlParams.get('recordId') || 'Unknown ID';
+            formConfig.formUrl = urlParams.get('formUrl') || `https://uploadpage-git-main-vaishnavi-lalwalas-projects.vercel.app/onboarding?${urlParams.toString()}`;
+            console.log('Form Config:', formConfig);
+        }
+
+        // Handle file upload
+        function handleFileUpload(type) {
+            const fileInput = document.getElementById(type + 'File');
+            const fileInfo = document.getElementById(type + 'Info');
+            const fileName = document.getElementById(type + 'FileName');
+            const fileSize = document.getElementById(type + 'FileSize');
+            const section = document.getElementById(type + 'Section');
+
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                const validation = validateFile(file, type);
+                if (!validation.valid) {
+                    showAlert(validation.message);
+                    fileInput.value = '';
+                    return;
+                }
+
+                uploadedFiles[type] = file;
+                fileName.textContent = file.name;
+                fileSize.textContent = formatFileSize(file.size);
+                fileInfo.classList.add('show');
+                section.classList.add('completed');
+                section.classList.remove('active');
+                updateProgress();
+            }
+        }
+
+        // Validate file
+        function validateFile(file, type) {
+            const maxSize = 4 * 1024 * 1024; // 4MB to ensure reliable submission
+            const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+
+            if (file.size > maxSize) {
+                return { valid: false, message: 'File size must be less than 4MB.' };
+            }
+
+            if (!allowedTypes.includes(file.type)) {
+                return { valid: false, message: 'Please upload only PDF, JPG, JPEG, or PNG files.' };
+            }
+
+            if (type === 'identity' && file.size < 50 * 1024) {
+                return { valid: false, message: 'Identity document is too small. Ensure it is clear and readable.' };
+            }
+
+            return { valid: true };
+        }
+
+        // Format file size
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Update progress bar and steps
+        function updateProgress() {
+            const uploadedCount = Object.values(uploadedFiles).filter(file => file !== null).length;
+            const progressPercentage = (uploadedCount / 3) * 100;
+            document.getElementById('progressFill').style.width = `${progressPercentage}%`;
+
+            for (let i = 1; i <= uploadedCount; i++) {
+                document.getElementById(`step${i}`).classList.add('bg-green-500', 'text-white');
+                document.getElementById(`step${i}`).classList.remove('bg-gray-200', 'text-gray-600', 'active');
+            }
+
+            if (uploadedCount < 3) {
+                document.getElementById(`step${uploadedCount + 1}`).classList.add('bg-indigo-500', 'text-white', 'active');
+            }
+
+            const submitBtn = document.getElementById('submitBtn');
+            if (uploadedCount === 3) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit All Documents ✓';
+                document.getElementById('step4').classList.add('bg-green-500', 'text-white', 'active');
+            } else {
+                submitBtn.disabled = true;
+                submitBtn.textContent = `Submit Documents (${uploadedCount}/3)`;
+            }
+        }
+
+        // Submit documents with retry logic
+        async function submitDocuments() {
+            const uploadedCount = Object.values(uploadedFiles).filter(file => file !== null).length;
+            if (uploadedCount !== 3) {
+                showAlert('Please upload all three required documents.');
+                return;
+            }
+
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.innerHTML = '<span class="loading"></span>Submitting...';
+            submitBtn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('candidateEmail', formConfig.candidateEmail);
+            formData.append('recordId', formConfig.recordId);
+            formData.append('candidateName', formConfig.candidateName);
+            formData.append('candidatePhone', formConfig.candidatePhone);
+            formData.append('position', formConfig.position);
+            formData.append('department', formConfig.department);
+            formData.append('startDate', formConfig.startDate);
+            formData.append('buddyName', formConfig.buddyName);
+            formData.append('buddyEmail', formConfig.buddyEmail);
+            formData.append('hrRep', formConfig.hrRep);
+            formData.append('identityProof', uploadedFiles.identity);
+            formData.append('addressProof', uploadedFiles.address);
+            formData.append('offerLetter', uploadedFiles.offer);
+
+            const webhookUrl = 'http://localhost:5678/webhook-test/5b09c0d7-15d2-421c-82ff-2db1d126948c'; // Replace with your n8n webhook URL
+
+            let attempts = 0;
+            const maxAttempts = 3;
+            while (attempts < maxAttempts) {
+                try {
+                    const response = await fetch(webhookUrl, {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'Accept': 'application/json'
+                        },
+                        signal: AbortSignal.timeout(10000) // 10s timeout
+                    });
+
+                    if (response.ok) {
+                        window.location.href = '/success?' + new URLSearchParams(window.location.search).toString();
+                        return;
+                    } else {
+                        let errorMessage = 'Submission failed. Please try again.';
+                        switch (response.status) {
+                            case 413:
+                                errorMessage = 'Files are too large. Please upload files smaller than 4MB.';
+                                break;
+                            case 500:
+                                errorMessage = 'Webhook server error. Please try again or contact support.';
+                                break;
+                            case 502:
+                                errorMessage = 'No response from webhook. Retrying...';
+                                break;
+                            case 504:
+                                errorMessage = 'Webhook request timed out. Retrying...';
+                                break;
+                        }
+                        if (response.status === 502 || response.status === 504) {
+                            attempts++;
+                            if (attempts < maxAttempts) {
+                                showAlert(`${errorMessage} Attempt ${attempts + 1} of ${maxAttempts}`);
+                                await new Promise(resolve => setTimeout(resolve, 2000));
+                                continue;
+                            }
+                        }
+                        showAlert(errorMessage);
+                        submitBtn.innerHTML = 'Submit Documents';
+                        submitBtn.disabled = false;
+                        return;
+                    }
+                } catch (error) {
+                    if (error.name === 'TimeoutError') {
+                        attempts++;
+                        if (attempts < maxAttempts) {
+                            showAlert(`Request timed out. Retrying... Attempt ${attempts + 1} of ${maxAttempts}`);
+                            await new Promise(resolve => setTimeout(resolve, 2000));
+                            continue;
+                        }
+                        showAlert('Request timed out after multiple attempts. Please check your connection and try again.');
+                    } else {
+                        showAlert('Network error occurred. Please check your connection and try again.');
+                    }
+                    console.error('Submission error:', error);
+                    submitBtn.innerHTML = 'Submit Documents';
+                    submitBtn.disabled = false;
+                    return;
+                }
+            }
+        }
+
+        // Show alert
+        function showAlert(message) {
+            const alert = document.getElementById('alert');
+            alert.textContent = message;
+            alert.classList.remove('hidden');
+            setTimeout(() => alert.classList.add('hidden'), 5000);
+        }
+
+        // Drag and drop setup
+        function setupDragAndDrop() {
+            const uploadSections = document.querySelectorAll('.upload-section');
+            const types = ['identity', 'address', 'offer'];
+
+            uploadSections.forEach((section, index) => {
+                const type = types[index];
+                section.addEventListener('dragover', e => {
+                    e.preventDefault();
+                    section.classList.add('active');
+                });
+                section.addEventListener('dragleave', e => {
+                    e.preventDefault();
+                    section.classList.remove('active');
+                });
+                section.addEventListener('drop', e => {
+                    e.preventDefault();
+                    section.classList.remove('active');
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        document.getElementById(type + 'File').files = files;
+                        handleFileUpload(type);
+                    }
+                });
+            });
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeFormConfig();
+            setupDragAndDrop();
+            document.addEventListener('keydown', e => {
+                if (e.key === 'Enter' && !document.getElementById('submitBtn').disabled) {
+                    submitDocuments();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
