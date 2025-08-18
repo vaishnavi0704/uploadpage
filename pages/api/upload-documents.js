@@ -133,7 +133,7 @@ export default async function handler(req, res) {
       };
 
       // Replace this URL with your actual N8N webhook URL
-      const n8nWebhookUrl = 'https://your-n8n-domain.com/webhook/onboarding-form-submit';
+      const n8nWebhookUrl = 'http://localhost:5678/webhook-test/onboarding-form-submit';
       
       const webhookResponse = await fetch(n8nWebhookUrl, {
         method: 'POST',
