@@ -10,12 +10,19 @@ export const config = {
   }
 };
 
-// Configure AWS S3
+// Configure AWS S3 for Mumbai region
 const s3 = new AWS.S3({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION || 'us-east-1'
+  region: 'ap-south-1' // Mumbai region
 });
+
+// Your specific bucket names
+const BUCKETS = {
+  identity: 'my-identity-bucket1',
+  address: 'my-address-bucket1', 
+  offer: 'my-offer-bucket1'
+};
 
 export default async function handler(req, res) {
   // Enable CORS
@@ -52,43 +59,44 @@ export default async function handler(req, res) {
     const candidateInfo = {
       candidateEmail: Array.isArray(fields.candidateEmail) ? fields.candidateEmail[0] : fields.candidateEmail,
       recordId: Array.isArray(fields.recordId) ? fields.recordId[0] : fields.recordId,
-      candidateName: Array.isArray(fields.candidateName) ? fields.candidateName[0] : fields.candidateName
+      candidateName: Array.isArray(fields.candidateName) ? fields.candidateName[0] : fields.candidateName,
+      position: Array.isArray(fields.position) ? fields.position[0] : fields.position,
+      department: Array.isArray(fields.department) ? fields.department[0] : fields.department
     };
 
     console.log("Candidate info:", candidateInfo);
 
-    // Prepare uploads
-    const uploads = [];
+    // Prepare uploads to separate buckets
     const uploadResults = {};
 
-    // Upload Identity Proof
+    // Upload Identity Proof to my-identity-bucket1
     if (files.identityProof) {
       const file = Array.isArray(files.identityProof) ? files.identityProof[0] : files.identityProof;
-      console.log("Uploading identity proof:", file.originalFilename);
+      console.log("Uploading identity proof to my-identity-bucket1:", file.originalFilename);
       
-      const result = await uploadToS3(file, 'onboarding-documents', 'identity', candidateInfo);
+      const result = await uploadToS3(file, BUCKETS.identity, 'identity', candidateInfo);
       uploadResults.identityProofUrl = result.Location;
-      uploads.push(result);
+      uploadResults.identityProofKey = result.Key;
     }
 
-    // Upload Address Proof
+    // Upload Address Proof to my-address-bucket1
     if (files.addressProof) {
       const file = Array.isArray(files.addressProof) ? files.addressProof[0] : files.addressProof;
-      console.log("Uploading address proof:", file.originalFilename);
+      console.log("Uploading address proof to my-address-bucket1:", file.originalFilename);
       
-      const result = await uploadToS3(file, 'onboarding-documents', 'address', candidateInfo);
+      const result = await uploadToS3(file, BUCKETS.address, 'address', candidateInfo);
       uploadResults.addressProofUrl = result.Location;
-      uploads.push(result);
+      uploadResults.addressProofKey = result.Key;
     }
 
-    // Upload Offer Letter
+    // Upload Offer Letter to my-offer-bucket1
     if (files.offerLetter) {
       const file = Array.isArray(files.offerLetter) ? files.offerLetter[0] : files.offerLetter;
-      console.log("Uploading offer letter:", file.originalFilename);
+      console.log("Uploading offer letter to my-offer-bucket1:", file.originalFilename);
       
-      const result = await uploadToS3(file, 'onboarding-documents', 'offer', candidateInfo);
+      const result = await uploadToS3(file, BUCKETS.offer, 'offer', candidateInfo);
       uploadResults.offerLetterUrl = result.Location;
-      uploads.push(result);
+      uploadResults.offerLetterKey = result.Key;
     }
 
     // Send data to N8N webhook
@@ -99,11 +107,29 @@ export default async function handler(req, res) {
         candidateEmail: candidateInfo.candidateEmail,
         recordId: candidateInfo.recordId,
         candidateName: candidateInfo.candidateName,
+        position: candidateInfo.position,
+        department: candidateInfo.department,
+        
+        // S3 URLs for each document
         identityProofUrl: uploadResults.identityProofUrl,
         addressProofUrl: uploadResults.addressProofUrl,
         offerLetterUrl: uploadResults.offerLetterUrl,
+        
+        // S3 Keys for reference
+        identityProofKey: uploadResults.identityProofKey,
+        addressProofKey: uploadResults.addressProofKey,
+        offerLetterKey: uploadResults.offerLetterKey,
+        
+        // Bucket information
+        buckets: {
+          identity: BUCKETS.identity,
+          address: BUCKETS.address,
+          offer: BUCKETS.offer
+        },
+        
         submissionTime: new Date().toISOString(),
-        documentsUploaded: true
+        documentsUploaded: true,
+        uploadedToSeparateBuckets: true
       };
 
       // Replace this URL with your actual N8N webhook URL
@@ -130,9 +156,15 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       success: true,
-      message: "All documents uploaded successfully",
+      message: "All documents uploaded successfully to separate buckets",
       files: uploadResults,
-      candidateInfo: candidateInfo
+      candidateInfo: candidateInfo,
+      buckets: BUCKETS,
+      uploadSummary: {
+        identityProof: uploadResults.identityProofUrl ? `Uploaded to ${BUCKETS.identity}` : 'Not uploaded',
+        addressProof: uploadResults.addressProofUrl ? `Uploaded to ${BUCKETS.address}` : 'Not uploaded',
+        offerLetter: uploadResults.offerLetterUrl ? `Uploaded to ${BUCKETS.offer}` : 'Not uploaded'
+      }
     });
 
   } catch (error) {
@@ -146,7 +178,7 @@ export default async function handler(req, res) {
   }
 }
 
-// Updated S3 upload function
+// Updated S3 upload function for specific buckets
 async function uploadToS3(file, bucketName, documentType, candidateInfo) {
   try {
     console.log("Reading file:", file.filepath);
@@ -154,7 +186,10 @@ async function uploadToS3(file, bucketName, documentType, candidateInfo) {
     
     const fileExtension = file.originalFilename.split('.').pop();
     const timestamp = new Date().toISOString().split('T')[0];
-    const fileName = `${documentType}-${candidateInfo.recordId}-${timestamp}.${fileExtension}`;
+    const timeString = new Date().toISOString().replace(/[:.]/g, '-');
+    
+    // Create descriptive filename
+    const fileName = `${documentType}-${candidateInfo.candidateName?.replace(/\s+/g, '_') || 'candidate'}-${candidateInfo.recordId}-${timeString}.${fileExtension}`;
 
     const params = {
       Bucket: bucketName,
@@ -162,15 +197,24 @@ async function uploadToS3(file, bucketName, documentType, candidateInfo) {
       Body: fileContent,
       ContentType: file.mimetype,
       Metadata: {
-        'candidate-email': candidateInfo.candidateEmail,
-        'candidate-name': candidateInfo.candidateName,
+        'candidate-email': candidateInfo.candidateEmail || 'unknown',
+        'candidate-name': candidateInfo.candidateName || 'unknown',
+        'candidate-position': candidateInfo.position || 'unknown',
+        'candidate-department': candidateInfo.department || 'unknown',
+        'record-id': candidateInfo.recordId || 'unknown',
         'document-type': documentType,
-        'upload-date': new Date().toISOString()
-      }
+        'upload-date': new Date().toISOString(),
+        'original-filename': file.originalFilename,
+        'file-size': file.size.toString()
+      },
+      // Set proper permissions
+      ACL: 'private'
     };
 
-    console.log("Uploading to S3:", params.Key);
+    console.log(`Uploading to S3 bucket: ${bucketName}, Key: ${params.Key}`);
     const result = await s3.upload(params).promise();
+    
+    console.log(`Successfully uploaded ${documentType} to ${bucketName}:`, result.Location);
     
     // Clean up temp file
     try {
@@ -181,7 +225,7 @@ async function uploadToS3(file, bucketName, documentType, candidateInfo) {
     
     return result;
   } catch (error) {
-    console.error("S3 upload error:", error);
+    console.error(`S3 upload error for ${documentType} to ${bucketName}:`, error);
     throw error;
   }
 }
