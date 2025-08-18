@@ -230,3 +230,6 @@ async function updateAirtableWithDocuments(candidateInfo, attachments) {
     return { success: false, error: error.message };
   }
 }
+res.writeHead(302, { Location: '/success' });
+res.end();
+
