@@ -271,7 +271,7 @@
             formData.append('addressProof', uploadedFiles.address);
             formData.append('offerLetter', uploadedFiles.offer);
 
-            const webhookUrl = 'https://uploadpage-seven.vercel.app/api/upload-documents';
+            const webhookUrl = 'http://localhost:5678/webhook-test/onboarding-form-submit';
 
 
             let attempts = 0;
