@@ -145,20 +145,57 @@
             formUrl: ""
         };
 
-        // Initialize formConfig with query parameters
-        function initializeFormConfig() {
-            const urlParams = new URLSearchParams(window.location.search);
-            formConfig.candidateName = urlParams.get('candidateName') || 'Unknown Name';
-            formConfig.candidateEmail = urlParams.get('candidateEmail') || 'unknown@example.com';
-            formConfig.candidatePhone = urlParams.get('candidatePhone') || 'Unknown Phone';
-            formConfig.position = urlParams.get('position') || 'Unknown Position';
-            formConfig.department = urlParams.get('department') || 'Unknown Department';
-            formConfig.startDate = urlParams.get('startDate') || 'Unknown Date';
-            formConfig.buddyEmail = urlParams.get('buddyEmail') || 'unknown@bluedataconsulting.in';
-            formConfig.buddyName = urlParams.get('buddyName') || 'Unknown Buddy';
-            formConfig.hrRep = urlParams.get('hrRep') || 'Unknown HR';
-            formConfig.recordId = urlParams.get('recordId') || 'Unknown ID';
-            formConfig.formUrl = urlParams.get('formUrl') || `https://uploadpage-seven.vercel.app/`;
+        // Initialize formConfig with query parameters and Airtable data
+        async function initializeFormConfig() {
+            const params = new URLSearchParams(window.location.search);
+            const candidateName = params.get("candidateName");
+            const airtableUrl = `https://api.airtable.com/v0/appMvECrw7CrJFCO0/tblqaH9RrTO6JuG5N/${candidateName}`;
+
+            // Set default values
+            formConfig.candidateName = params.get('candidateName') || 'Unknown Name';
+            formConfig.candidateEmail = params.get('candidateEmail') || 'unknown@example.com';
+            formConfig.candidatePhone = params.get('candidatePhone') || 'Unknown Phone';
+            formConfig.position = params.get('position') || 'Unknown Position';
+            formConfig.department = params.get('department') || 'Unknown Department';
+            formConfig.startDate = params.get('startDate') || 'Unknown Date';
+            formConfig.buddyEmail = params.get('buddyEmail') || 'unknown@bluedataconsulting.in';
+            formConfig.buddyName = params.get('buddyName') || 'Unknown Buddy';
+            formConfig.hrRep = params.get('hrRep') || 'Unknown HR';
+            formConfig.recordId = candidateId || 'Unknown ID';
+            // Generate unique form URL based on candidateId
+            formConfig.formUrl = candidateId 
+                ? `https://uploadpage-seven.vercel.app/?candidate_id=${candidateId}`
+                : `https://uploadpage-seven.vercel.app/`;
+
+            if (candidateId) {
+                try {
+                    const response = await fetch(airtableUrl, {
+                        headers: {
+                            Authorization: `Bearer AIRTABLE_API_KEY`, // Replace with your Airtable API key
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        const fields = data.fields || {};
+                        // Update formConfig with Airtable data if available
+                        formConfig.candidateName = fields.candidateName || formConfig.candidateName;
+                        formConfig.candidateEmail = fields.candidateEmail || formConfig.candidateEmail;
+                        formConfig.candidatePhone = fields.candidatePhone || formConfig.candidatePhone;
+                        formConfig.position = fields.position || formConfig.position;
+                        formConfig.department = fields.department || formConfig.department;
+                        formConfig.startDate = fields.startDate || formConfig.startDate;
+                        formConfig.buddyEmail = fields.buddyEmail || formConfig.buddyEmail;
+                        formConfig.buddyName = fields.buddyName || formConfig.buddyName;
+                        formConfig.hrRep = fields.hrRep || formConfig.hrRep;
+                    } else {
+                        showAlert('Failed to fetch candidate data from Airtable.');
+                    }
+                } catch (error) {
+                    showAlert('Error connecting to Airtable. Using default values.');
+                    console.error('Airtable fetch error:', error);
+                }
+            }
             console.log('Form Config:', formConfig);
         }
 
@@ -299,8 +336,8 @@
         }
 
         // Initialize on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            initializeFormConfig();
+        document.addEventListener('DOMContentLoaded', async () => {
+            await initializeFormConfig();
             setupDragAndDrop();
             document.addEventListener('keydown', e => {
                 if (e.key === 'Enter' && !document.getElementById('submitBtn').disabled) {
