@@ -1,231 +1,185 @@
-// pages/api/upload-documents.js
 import formidable from "formidable";
-import AWS from "aws-sdk";
+import fetch from "node-fetch";
 import fs from "fs";
 
 export const config = {
-  api: { 
-    bodyParser: false,
-    externalResolver: true
-  }
-};
-
-// Configure AWS S3 for Mumbai region
-const s3 = new AWS.S3({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: 'ap-south-1' // Mumbai region
-});
-
-// Your specific bucket names
-const BUCKETS = {
-  identity: 'my-identity-bucket1',
-  address: 'my-address-bucket1', 
-  offer: 'my-offer-bucket1'
+  api: { bodyParser: false, externalResolver: true },
+  runtime: "nodejs"
 };
 
 export default async function handler(req, res) {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // CORS
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).json({ message: "Method not allowed" });
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ message: "Method not allowed" });
-  }
-
-  console.log("Starting file upload process...");
+  console.log("Starting direct upload to Airtable (base64)…");
 
   try {
-    // Initialize formidable with correct syntax
     const form = formidable({
       uploadDir: "/tmp",
       keepExtensions: true,
-      maxFileSize: 5 * 1024 * 1024, // 5MB limit
+      maxFileSize: 10 * 1024 * 1024, // allow user up to 10MB, we'll reject >5MB before upload
       multiples: true
     });
 
-    // Parse the form - NEW SYNTAX
     const [fields, files] = await form.parse(req);
-    
-    console.log("Fields received:", fields);
-    console.log("Files received:", Object.keys(files));
 
-    // Extract candidate information
+    // Normalize candidate fields
     const candidateInfo = {
       candidateEmail: Array.isArray(fields.candidateEmail) ? fields.candidateEmail[0] : fields.candidateEmail,
       recordId: Array.isArray(fields.recordId) ? fields.recordId[0] : fields.recordId,
-      candidateName: Array.isArray(fields.candidateName) ? fields.candidateName[0] : fields.candidateName,
-      position: Array.isArray(fields.position) ? fields.position[0] : fields.position,
-      department: Array.isArray(fields.department) ? fields.department[0] : fields.department
+      candidateName: Array.isArray(fields.candidateName) ? fields.candidateName[0] : fields.candidateName
     };
+    if (!candidateInfo.recordId) throw new Error("Missing recordId in form submission");
 
-    console.log("Candidate info:", candidateInfo);
+    // Prepare attachments by directly uploading file bytes to Airtable
+    const attachments = {};
+    const fileMap = [
+      { inputKey: "identityProof", airtableField: "Identity Proof", label: "IdentityProof" },
+      { inputKey: "addressProof",  airtableField: "Address Proof",  label: "AddressProof" },
+      { inputKey: "offerLetter",   airtableField: "Offer Letter",   label: "OfferLetter" }
+    ];
 
-    // Prepare uploads to separate buckets
-    const uploadResults = {};
+    for (const { inputKey, airtableField, label } of fileMap) {
+      if (!files[inputKey]) continue;
+      const f = Array.isArray(files[inputKey]) ? files[inputKey][0] : files[inputKey];
+      const cleanName = (f.originalFilename || "file")
+        .replace(/\.pdf\.pdf$/i, ".pdf")
+        .replace(/[^\w.\-() ]+/g, "_");
+      const ext = cleanName.split(".").pop()?.toLowerCase() || "";
+      const finalName = `${candidateInfo.recordId}_${label}.${ext || "bin"}`;
+      console.log(`Uploading ${label}: ${finalName} (${f.mimetype}, ${f.size} bytes)`);
 
-    // Upload Identity Proof to my-identity-bucket1
-    if (files.identityProof) {
-      const file = Array.isArray(files.identityProof) ? files.identityProof[0] : files.identityProof;
-      console.log("Uploading identity proof to my-identity-bucket1:", file.originalFilename);
-      
-      const result = await uploadToS3(file, BUCKETS.identity, 'identity', candidateInfo);
-      uploadResults.identityProofUrl = result.Location;
-      uploadResults.identityProofKey = result.Key;
-    }
-
-    // Upload Address Proof to my-address-bucket1
-    if (files.addressProof) {
-      const file = Array.isArray(files.addressProof) ? files.addressProof[0] : files.addressProof;
-      console.log("Uploading address proof to my-address-bucket1:", file.originalFilename);
-      
-      const result = await uploadToS3(file, BUCKETS.address, 'address', candidateInfo);
-      uploadResults.addressProofUrl = result.Location;
-      uploadResults.addressProofKey = result.Key;
-    }
-
-    // Upload Offer Letter to my-offer-bucket1
-    if (files.offerLetter) {
-      const file = Array.isArray(files.offerLetter) ? files.offerLetter[0] : files.offerLetter;
-      console.log("Uploading offer letter to my-offer-bucket1:", file.originalFilename);
-      
-      const result = await uploadToS3(file, BUCKETS.offer, 'offer', candidateInfo);
-      uploadResults.offerLetterUrl = result.Location;
-      uploadResults.offerLetterKey = result.Key;
-    }
-
-    // Send data to N8N webhook
-    try {
-      console.log("Sending to N8N webhook...");
-      
-      const webhookData = {
-        candidateEmail: candidateInfo.candidateEmail,
-        recordId: candidateInfo.recordId,
-        candidateName: candidateInfo.candidateName,
-        position: candidateInfo.position,
-        department: candidateInfo.department,
-        
-        // S3 URLs for each document
-        identityProofUrl: uploadResults.identityProofUrl,
-        addressProofUrl: uploadResults.addressProofUrl,
-        offerLetterUrl: uploadResults.offerLetterUrl,
-        
-        // S3 Keys for reference
-        identityProofKey: uploadResults.identityProofKey,
-        addressProofKey: uploadResults.addressProofKey,
-        offerLetterKey: uploadResults.offerLetterKey,
-        
-        // Bucket information
-        buckets: {
-          identity: BUCKETS.identity,
-          address: BUCKETS.address,
-          offer: BUCKETS.offer
-        },
-        
-        submissionTime: new Date().toISOString(),
-        documentsUploaded: true,
-        uploadedToSeparateBuckets: true
-      };
-
-      // Replace this URL with your actual N8N webhook URL
-      const n8nWebhookUrl = 'http://localhost:5678/webhook-test/onboarding-form-submit';
-      
-      const webhookResponse = await fetch(n8nWebhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(webhookData)
-      });
-
-      if (!webhookResponse.ok) {
-        console.warn("N8N webhook failed, but files were uploaded successfully");
-      } else {
-        console.log("N8N webhook successful");
+      // Enforce ~5MB limit for Airtable base64 upload
+      if (f.size > 5 * 1024 * 1024) {
+        throw new Error(`${label} exceeds 5MB. Airtable base64 upload limit hit.`);
       }
 
-    } catch (webhookError) {
-      console.error("N8N webhook error:", webhookError);
-      // Don't fail the whole request if webhook fails
+      const bytes = fs.readFileSync(f.filepath);
+      const base64 = bytes.toString("base64");
+
+      // Upload to Airtable's Upload Attachment API (base64)
+      const up = await uploadAttachmentToAirtable({
+        base64,
+        filename: finalName,
+        contentType: f.mimetype || "application/octet-stream"
+      });
+
+      // Clean temp file
+      try { fs.unlinkSync(f.filepath); } catch {}
+
+      // Use the returned URL/filename for patching the record
+      attachments[airtableField] = {
+        url: up.url,
+        filename: up.filename || finalName
+      };
     }
+
+    // Update the Airtable record with attachments + status
+    const airtableUpdate = await updateAirtableRecord(candidateInfo, attachments);
 
     return res.status(200).json({
       success: true,
-      message: "All documents uploaded successfully to separate buckets",
-      files: uploadResults,
-      candidateInfo: candidateInfo,
-      buckets: BUCKETS,
-      uploadSummary: {
-        identityProof: uploadResults.identityProofUrl ? `Uploaded to ${BUCKETS.identity}` : 'Not uploaded',
-        addressProof: uploadResults.addressProofUrl ? `Uploaded to ${BUCKETS.address}` : 'Not uploaded',
-        offerLetter: uploadResults.offerLetterUrl ? `Uploaded to ${BUCKETS.offer}` : 'Not uploaded'
-      }
+      message: "Documents uploaded directly to Airtable",
+      candidateInfo,
+      documentsUploaded: {
+        identityProof: Boolean(attachments["Identity Proof"]),
+        addressProof:  Boolean(attachments["Address Proof"]),
+        offerLetter:   Boolean(attachments["Offer Letter"])
+      },
+      airtableUpdate
     });
-
-  } catch (error) {
-    console.error("Upload error:", error);
-    return res.status(500).json({ 
+  } catch (err) {
+    console.error("Upload error:", err);
+    return res.status(500).json({
       success: false,
-      message: "Upload failed", 
-      error: error.message,
-      stack: error.stack
+      message: "Upload failed",
+      error: err.message
     });
   }
 }
 
-// Updated S3 upload function for specific buckets
-async function uploadToS3(file, bucketName, documentType, candidateInfo) {
-  try {
-    console.log("Reading file:", file.filepath);
-    const fileContent = fs.readFileSync(file.filepath);
-    
-    const fileExtension = file.originalFilename.split('.').pop();
-    const timestamp = new Date().toISOString().split('T')[0];
-    const timeString = new Date().toISOString().replace(/[:.]/g, '-');
-    
-    // Create descriptive filename
-    const fileName = `${documentType}-${candidateInfo.candidateName?.replace(/\s+/g, '_') || 'candidate'}-${candidateInfo.recordId}-${timeString}.${fileExtension}`;
+/**
+ * POST base64 file to Airtable "Upload Attachment" endpoint.
+ * Returns an attachment object (including a usable URL) that Airtable hosts.
+ */
+async function uploadAttachmentToAirtable({ base64, filename, contentType }) {
+  const token = process.env.AIRTABLE_API_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID;
 
-    const params = {
-      Bucket: bucketName,
-      Key: fileName,
-      Body: fileContent,
-      ContentType: file.mimetype,
-      Metadata: {
-        'candidate-email': candidateInfo.candidateEmail || 'unknown',
-        'candidate-name': candidateInfo.candidateName || 'unknown',
-        'candidate-position': candidateInfo.position || 'unknown',
-        'candidate-department': candidateInfo.department || 'unknown',
-        'record-id': candidateInfo.recordId || 'unknown',
-        'document-type': documentType,
-        'upload-date': new Date().toISOString(),
-        'original-filename': file.originalFilename,
-        'file-size': file.size.toString()
-      },
-      // Set proper permissions
-      ACL: 'private'
-    };
+  if (!token || !baseId) throw new Error("Missing AIRTABLE_API_TOKEN or AIRTABLE_BASE_ID");
 
-    console.log(`Uploading to S3 bucket: ${bucketName}, Key: ${params.Key}`);
-    const result = await s3.upload(params).promise();
-    
-    console.log(`Successfully uploaded ${documentType} to ${bucketName}:`, result.Location);
-    
-    // Clean up temp file
-    try {
-      fs.unlinkSync(file.filepath);
-    } catch (unlinkError) {
-      console.warn("Could not delete temp file:", unlinkError.message);
-    }
-    
-    return result;
-  } catch (error) {
-    console.error(`S3 upload error for ${documentType} to ${bucketName}:`, error);
-    throw error;
+  // NOTE: This endpoint is documented by Airtable's Web API (base64 upload, ~5MB). :contentReference[oaicite:3]{index=3}
+  const endpoint = `https://api.airtable.com/v0/bases/${encodeURIComponent(baseId)}/attachments/upload`;
+
+  const resp = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      file: base64,
+      filename,
+      contentType
+    })
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Upload Attachment failed: ${resp.status} ${text}`);
   }
+
+  const data = await resp.json();
+  // Expected to include at least: { url, id, filename, size, type, ... }
+  if (!data?.url) throw new Error("Upload Attachment returned no URL");
+  return data;
+}
+
+/**
+ * PATCH the Airtable record with the newly uploaded attachment URLs.
+ */
+async function updateAirtableRecord(candidateInfo, attachments) {
+  const token = process.env.AIRTABLE_API_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID;
+  const tableIdOrName = process.env.AIRTABLE_TABLE_ID || "tblqaH9RrTO6JuG5N";
+
+  if (!token || !baseId) throw new Error("Missing AIRTABLE_API_TOKEN or AIRTABLE_BASE_ID");
+
+  const fieldsToUpdate = {
+    Status: "Documents Submitted",
+    "Documents Submitted": true
+  };
+
+  if (attachments["Identity Proof"]) {
+    fieldsToUpdate["Identity Proof"] = [attachments["Identity Proof"]];
+  }
+  if (attachments["Address Proof"]) {
+    fieldsToUpdate["Address Proof"] = [attachments["Address Proof"]];
+  }
+  if (attachments["Offer Letter"]) {
+    fieldsToUpdate["Offer Letter"] = [attachments["Offer Letter"]];
+  }
+
+  const url = `https://api.airtable.com/v0/${encodeURIComponent(baseId)}/${encodeURIComponent(tableIdOrName)}/${encodeURIComponent(candidateInfo.recordId)}`;
+
+  const resp = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ fields: fieldsToUpdate })
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Airtable update failed: ${resp.status} ${text}`);
+  }
+
+  const result = await resp.json();
+  return { success: true, data: result };
 }
