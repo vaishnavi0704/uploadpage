@@ -184,67 +184,55 @@
         // Initialize form with candidate data
         async function initializeCandidateData() {
             const params = new URLSearchParams(window.location.search);
-            const candidateName = params.get('candidateName') || params.get('Name');
             
-            if (!candidateName) {
+            // Extract all parameters from URL (populated by n8n)
+            candidateData = {
+                id: params.get('recordId') || 'Unknown ID',
+                name: params.get('candidateName') || params.get('Name') || 'Unknown Name',
+                email: params.get('candidateEmail') || params.get('Email') || 'unknown@example.com',
+                phone: params.get('candidatePhone') || params.get('Phone') || 'Unknown Phone',
+                position: params.get('position') || params.get('Position') || 'Unknown Position',
+                department: params.get('department') || params.get('Department') || 'Unknown Department',
+                startDate: params.get('startDate') || params.get('Start Date') || 'Unknown Date',
+                buddyEmail: params.get('buddyEmail') || params.get('Buddy Email') || 'unknown@bluedataconsulting.in',
+                buddyName: params.get('buddyName') || params.get('Buddy Name') || 'Unknown Buddy',
+                hrRep: params.get('hrRep') || params.get('HR Representative') || 'Unknown HR',
+                status: params.get('status') || params.get('Status') || 'Documents Pending'
+            };
+
+            if (candidateData.name === 'Unknown Name') {
                 showAlert('No candidate specified. Please use a valid link.', 'error');
                 return;
             }
 
-            try {
-                showAlert('Loading candidate information...', 'info');
-                
-                // Construct Airtable API URL with proper filtering
-                const filterFormula = encodeURIComponent(`{Name}='${candidateName}'`);
-                const airtableUrl = `https://api.airtable.com/v0/${AIRTABLE_CONFIG.baseId}/${AIRTABLE_CONFIG.tableId}?filterByFormula=${filterFormula}`;
+            // Update UI with candidate information
+            updateCandidateUI();
+            showAlert('Candidate information loaded successfully!', 'success');
 
-                const response = await fetch(airtableUrl, {
+            // Optional: Validate data with Airtable if needed
+            if (candidateData.id !== 'Unknown ID' && AIRTABLE_CONFIG.apiKey !== 'AIRTABLE_API_KEY') {
+                await validateWithAirtable();
+            }
+        }
+
+        // Optional: Validate candidate data with Airtable
+        async function validateWithAirtable() {
+            try {
+                const response = await fetch(`https://api.airtable.com/v0/${AIRTABLE_CONFIG.baseId}/${AIRTABLE_CONFIG.tableId}/${candidateData.id}`, {
                     headers: {
                         'Authorization': `Bearer ${AIRTABLE_CONFIG.apiKey}`,
                         'Content-Type': 'application/json'
                     }
                 });
 
-                if (!response.ok) {
-                    throw new Error(`API request failed: ${response.status}`);
-                }
-
-                const data = await response.json();
-                
-                if (data.records && data.records.length > 0) {
-                    const record = data.records[0];
-                    const fields = record.fields;
-
-                    // Populate candidate data
-                    candidateData = {
-                        id: record.id,
-                        name: fields.Name || candidateName,
-                        email: fields.Email || '',
-                        phone: fields.Phone || '',
-                        position: fields.Position || '',
-                        department: fields.Department || '',
-                        startDate: fields['Start Date'] || '',
-                        buddyEmail: fields['Buddy Email'] || '',
-                        buddyName: fields['Buddy Name'] || '',
-                        hrRep: fields['HR Representative'] || '',
-                        status: fields.Status || 'Documents Pending'
-                    };
-
-                    // Update UI with candidate information
-                    updateCandidateUI();
-                    showAlert('Candidate information loaded successfully!', 'success');
-                    
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Airtable validation successful:', data);
                 } else {
-                    throw new Error('No candidate found with this name');
+                    console.warn('Airtable validation failed, but proceeding with URL data');
                 }
-
             } catch (error) {
-                console.error('Error loading candidate data:', error);
-                showAlert(`Error loading candidate data: ${error.message}`, 'error');
-                
-                // Fallback to URL parameters if available
-                candidateData.name = candidateName;
-                updateCandidateUI();
+                console.warn('Airtable validation error:', error);
             }
         }
 
@@ -255,11 +243,22 @@
             
             // Show candidate info card
             const infoCard = document.getElementById('candidateInfoCard');
-            document.getElementById('candidatePosition').textContent = candidateData.position || 'Not specified';
-            document.getElementById('candidateDepartment').textContent = candidateData.department || 'Not specified';
-            document.getElementById('candidateStartDate').textContent = candidateData.startDate || 'Not specified';
-            document.getElementById('candidateHR').textContent = candidateData.hrRep || 'Not specified';
-            infoCard.style.display = 'block';
+            document.getElementById('candidatePosition').textContent = 
+                candidateData.position !== 'Unknown Position' ? candidateData.position : 'Not specified';
+            document.getElementById('candidateDepartment').textContent = 
+                candidateData.department !== 'Unknown Department' ? candidateData.department : 'Not specified';
+            document.getElementById('candidateStartDate').textContent = 
+                candidateData.startDate !== 'Unknown Date' ? candidateData.startDate : 'Not specified';
+            document.getElementById('candidateHR').textContent = 
+                candidateData.hrRep !== 'Unknown HR' ? candidateData.hrRep : 'Not specified';
+            
+            // Only show info card if we have real data
+            if (candidateData.position !== 'Unknown Position' || 
+                candidateData.department !== 'Unknown Department' || 
+                candidateData.startDate !== 'Unknown Date' || 
+                candidateData.hrRep !== 'Unknown HR') {
+                infoCard.style.display = 'block';
+            }
         }
 
         // Handle file upload
@@ -522,10 +521,32 @@
             });
         }
 
-        // Generate unique candidate link
-        function generateCandidateLink(candidateName) {
-            const baseUrl = 'https://uploadpage-seven.vercel.app/';
-            return `${baseUrl}?candidateName=${encodeURIComponent(candidateName)}`;
+        // Generate dynamic candidate link for n8n integration
+        function generateDynamicCandidateLink(baseUrl, candidateData) {
+            const params = new URLSearchParams({
+                candidateName: candidateData.candidateName || 'Unknown Name',
+                candidateEmail: candidateData.candidateEmail || 'unknown@example.com',
+                candidatePhone: candidateData.candidatePhone || 'Unknown Phone',
+                position: candidateData.position || 'Unknown Position',
+                department: candidateData.department || 'Unknown Department',
+                startDate: candidateData.startDate || 'Unknown Date',
+                buddyEmail: candidateData.buddyEmail || 'unknown@bluedataconsulting.in',
+                buddyName: candidateData.buddyName || 'Unknown Buddy',
+                hrRep: candidateData.hrRep || 'Unknown HR',
+                recordId: candidateData.recordId || 'Unknown ID'
+            });
+            
+            return `${baseUrl}?${params.toString()}`;
+        }
+
+        // Debug function to show current URL parameters
+        function debugUrlParameters() {
+            const params = new URLSearchParams(window.location.search);
+            console.log('Current URL Parameters:');
+            for (const [key, value] of params) {
+                console.log(`${key}: ${value}`);
+            }
+            console.log('Candidate Data:', candidateData);
         }
 
         // Initialize on page load
