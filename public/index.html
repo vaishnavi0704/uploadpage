@@ -178,7 +178,7 @@
         const AIRTABLE_CONFIG = {
             baseId: 'appMvECrw7CrJFCO0',
             tableId: 'tblqaH9RrTO6JuG5N',
-            apiKey: 'YOUR_AIRTABLE_API_KEY' // Replace with your actual API key
+            apiKey: process.env.AIRTABLE_API_KEY; // Replace with your actual API key
         };
 
         // Initialize form with candidate data
