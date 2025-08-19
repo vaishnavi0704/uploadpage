@@ -134,7 +134,7 @@ async function updateAirtableWithDocuments(candidateInfo, attachments) {
       fieldsToUpdate["Offer Letter"] = [attachments.offerLetter];
     }
 
-    const airtableUrl = `https://api.airtable.com/v0/${baseId}/${tableId}/${candidateInfo.recordId}`;
+    const airtableUrl = `https://airtable.com/appMvECrw7CrJFCO0/tblqaH9RrTO6JuG5N/viwGHZwBSAJxtItfW/recbafNpqEanUglbT?blocks=hide`;
     
     const response = await fetch(airtableUrl, {
       method: 'PATCH',
