@@ -1,5 +1,6 @@
-// pages/api/upload-documents.js
 import formidable from "formidable";
+import { put } from "@vercel/blob";
+import fetch from "node-fetch";
 import fs from "fs";
 
 export const config = {
@@ -45,34 +46,26 @@ export default async function handler(req, res) {
       candidateName: Array.isArray(fields.candidateName) ? fields.candidateName[0] : fields.candidateName,
     };
 
-    console.log("Candidate info:", candidateInfo);
-
     if (!candidateInfo.recordId) {
       throw new Error("Missing recordId in form submission");
     }
 
+    console.log("Candidate info:", candidateInfo);
+
     // Process files for Airtable attachments
     const attachments = {};
+    const fileTypes = [
+      { key: "identityProof", field: "Identity Proof", type: "IdentityProof" },
+      { key: "addressProof", field: "Address Proof", type: "AddressProof" }, // Fixed typo from AdressProof
+      { key: "offerLetter", field: "Offer Letter", type: "OfferLetter" },
+    ];
 
-    // Process Identity Proof
-    if (files.identityProof) {
-      const file = Array.isArray(files.identityProof) ? files.identityProof[0] : files.identityProof;
-      console.log("Processing identity proof:", file.originalFilename);
-      attachments["Identity Proof"] = await processFileForAirtable(file);
-    }
-
-    // Process Address Proof
-    if (files.addressProof) {
-      const file = Array.isArray(files.addressProof) ? files.addressProof[0] : files.addressProof;
-      console.log("Processing address proof:", file.originalFilename);
-      attachments["Address Proof"] = await processFileForAirtable(file);
-    }
-
-    // Process Offer Letter
-    if (files.offerLetter) {
-      const file = Array.isArray(files.offerLetter) ? files.offerLetter[0] : files.offerLetter;
-      console.log("Processing offer letter:", file.originalFilename);
-      attachments["Offer Letter"] = await processFileForAirtable(file);
+    for (const { key, field, type } of fileTypes) {
+      if (files[key]) {
+        const file = Array.isArray(files[key]) ? files[key][0] : files[key];
+        console.log(`Processing ${type}:`, file.originalFilename);
+        attachments[field] = await processFileForAirtable(file, candidateInfo.recordId, type);
+      }
     }
 
     console.log("Attachments prepared:", Object.keys(attachments));
@@ -98,153 +91,67 @@ export default async function handler(req, res) {
       success: false,
       message: "Upload failed",
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
   }
 }
-async function submitDocuments() {
-    console.log('🚀 SUBMIT BUTTON CLICKED');
-    
-    const uploadedCount = Object.values(uploadedFiles).filter(file => file !== null).length;
-    if (uploadedCount !== 3) {
-        console.log('❌ Not all files uploaded:', uploadedCount);
-        showAlert('Please upload all three required documents.');
-        return;
-    }
 
-    console.log('✅ All 3 files ready for upload');
-    console.log('Files:', {
-        identity: uploadedFiles.identity?.name,
-        address: uploadedFiles.address?.name,
-        offer: uploadedFiles.offer?.name
-    });
-
-    const submitBtn = document.getElementById('submitBtn');
-    submitBtn.innerHTML = '<span class="loading"></span>Submitting...';
-    submitBtn.disabled = true;
-
-    // Prepare form data
-    const formData = new FormData();
-    formData.append('candidateEmail', formConfig.candidateEmail || 'test@example.com');
-    formData.append('recordId', formConfig.recordId || 'recbafNpqEanUglbT');
-    formData.append('candidateName', formConfig.candidateName || 'Test User');
-    
-    console.log('📝 Form data:', {
-        candidateEmail: formConfig.candidateEmail || 'test@example.com',
-        recordId: formConfig.recordId || 'recbafNpqEanUglbT',
-        candidateName: formConfig.candidateName || 'Test User'
-    });
-
-    // Add files
-    if (uploadedFiles.identity) {
-        formData.append('identityProof', uploadedFiles.identity);
-        console.log('📎 Added identity proof:', uploadedFiles.identity.name);
-    }
-    if (uploadedFiles.address) {
-        formData.append('addressProof', uploadedFiles.address);
-        console.log('📎 Added address proof:', uploadedFiles.address.name);
-    }
-    if (uploadedFiles.offer) {
-        formData.append('offerLetter', uploadedFiles.offer);
-        console.log('📎 Added offer letter:', uploadedFiles.offer.name);
-    }
-
-    const webhookUrl = 'https://uploadpage-seven.vercel.app/api/upload-documents';
-    console.log('🌐 Sending to:', webhookUrl);
-
-    try {
-        console.log('📤 Making API request...');
-        
-        const response = await fetch(webhookUrl, {
-            method: 'POST',
-            body: formData
-        });
-
-        console.log('📨 Response received:');
-        console.log('- Status:', response.status);
-        console.log('- Status Text:', response.statusText);
-        console.log('- Headers:', Object.fromEntries(response.headers.entries()));
-
-        const responseText = await response.text();
-        console.log('📄 Raw response text:', responseText);
-
-        let result;
-        try {
-            result = JSON.parse(responseText);
-            console.log('📊 Parsed JSON response:', result);
-        } catch (parseError) {
-            console.error('❌ Failed to parse JSON:', parseError);
-            console.log('Raw text was:', responseText);
-        }
-
-        if (response.ok) {
-            console.log('✅ Upload successful!');
-            alert('Documents uploaded successfully! Check Airtable and Vercel logs.');
-        } else {
-            console.error('❌ Upload failed with status:', response.status);
-            alert('Upload failed: ' + (result?.message || result?.error || responseText));
-        }
-
-    } catch (error) {
-        console.error('🚨 Network error:', error);
-        alert('Network error: ' + error.message);
-    } finally {
-        submitBtn.innerHTML = 'Submit Documents';
-        submitBtn.disabled = false;
-    }
-}
-// Convert file to Airtable attachment format (Base64 method)
-async function processFileForAirtable(file) {
+async function processFileForAirtable(file, recordId, documentType) {
   try {
-    console.log(`Processing file: ${file.originalFilename}, size: ${file.size}, type: ${file.mimetype}`);
+    // Clean filename to avoid double extensions
+    const cleanFilename = file.originalFilename.replace(/\.pdf\.pdf$/, ".pdf");
+    const ext = cleanFilename.split(".").pop().toLowerCase();
+    const filename = `${recordId}_${documentType}.${ext}`;
     
-    // Read file content as base64
+    console.log(`Processing file: ${file.originalFilename} -> ${filename}, size: ${file.size}, type: ${file.mimetype}`);
+    
+    // Read file content
     const fileContent = fs.readFileSync(file.filepath);
-    const base64Content = fileContent.toString('base64');
+    
+    // Upload to Vercel Blob
+    const { url } = await put(filename, fileContent, { access: "public" });
     
     // Clean up temp file
     try {
       fs.unlinkSync(file.filepath);
     } catch (unlinkError) {
-      console.warn("Could not delete temp file:", unlinkError.message);
+      console.warn(`Could not delete temp file ${file.filepath}:`, unlinkError.message);
     }
     
     // Return Airtable attachment format
     const attachment = {
-      filename: file.originalFilename,
-      url: `data:${file.mimetype};base64,${base64Content}`
+      filename,
+      url,
     };
     
-    console.log(`Attachment prepared: ${file.originalFilename}`);
+    console.log(`Attachment prepared: ${filename}, URL: ${url}`);
     return attachment;
     
   } catch (error) {
-    console.error("Error processing file:", error);
+    console.error(`Error processing file ${documentType}:`, error);
     throw error;
   }
 }
 
-// Update Airtable with documents
 async function updateAirtableWithDocuments(candidateInfo, attachments) {
   try {
-    // Check for API key with both possible names
-    const airtableApiKey = process.env.AIRTABLE_API_KEY || process.env.AIRTABLE_API_TOKEN;
-    const baseId = "appMvECrw7CrJFCO0";
-    const tableId = "tblqaH9RrTO6JuG5N";
+    const airtableApiToken = process.env.AIRTABLE_API_TOKEN;
+    const baseId = process.env.AIRTABLE_BASE_ID || "appMvECrw7CrJFCO0";
+    const tableId = process.env.AIRTABLE_TABLE_ID || "tblqaH9RrTO6JuG5N";
 
-    console.log("Airtable API Key exists:", !!airtableApiKey);
+    console.log("Airtable API Token exists:", !!airtableApiToken);
     console.log("Base ID:", baseId);
     console.log("Table ID:", tableId);
     console.log("Record ID:", candidateInfo.recordId);
 
-    if (!airtableApiKey) {
-      throw new Error("AIRTABLE_API_KEY or AIRTABLE_API_TOKEN environment variable not found");
+    if (!airtableApiToken) {
+      throw new Error("AIRTABLE_API_TOKEN environment variable not found");
     }
 
     // Prepare update fields
     const fieldsToUpdate = {
-      "Status": "Documents Submitted",
-      "Documents Submitted": true
+      Status: "Documents Submitted",
+      "Documents Submitted": true,
     };
 
     // Add attachments if they exist
@@ -269,15 +176,15 @@ async function updateAirtableWithDocuments(candidateInfo, attachments) {
     console.log("Airtable URL:", airtableUrl);
 
     const requestBody = {
-      fields: fieldsToUpdate
+      fields: fieldsToUpdate,
     };
 
-    console.log("Request body prepared, making API call...");
+    console.log("Request body prepared:", JSON.stringify(requestBody, null, 2));
 
     const response = await fetch(airtableUrl, {
       method: "PATCH",
       headers: {
-        "Authorization": `Bearer ${airtableApiKey}`,
+        Authorization: `Bearer ${airtableApiToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
