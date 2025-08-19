@@ -163,8 +163,8 @@
             formConfig.hrRep = params.get('hrRep') || 'Unknown HR';
             formConfig.recordId = candidateId || 'Unknown ID';
             // Generate unique form URL based on candidateId
-            formConfig.formUrl = candidateId 
-                ? `https://uploadpage-seven.vercel.app/?candidate_id=${candidateId}`
+            formConfig.formUrl = candidateName
+                ? `https://uploadpage-seven.vercel.app/?candidateName=${candidateName}`
                 : `https://uploadpage-seven.vercel.app/`;
 
             if (candidateId) {
@@ -197,6 +197,16 @@
                 }
             }
             console.log('Form Config:', formConfig);
+        }
+
+        // Convert file to base64
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+                reader.readAsDataURL(file);
+            });
         }
 
         // Handle file upload
@@ -281,8 +291,8 @@
             }
         }
 
-        // Submit documents
-        function submitDocuments() {
+        // Submit documents to Airtable
+        async function submitDocuments() {
             const uploadedCount = Object.values(uploadedFiles).filter(file => file !== null).length;
             if (uploadedCount !== 3) {
                 showAlert('Please upload all three required documents.');
@@ -293,11 +303,49 @@
             submitBtn.innerHTML = '<span class="loading"></span>Submitting...';
             submitBtn.disabled = true;
 
-            setTimeout(() => {
-                showAlert('Thank you for submitting the documents!');
+            const params = new URLSearchParams(window.location.search);
+            const candidateName = params.get("candidateName");
+
+            try {
+                // Convert files to base64
+                const filePromises = Object.entries(uploadedFiles).map(async ([type, file]) => {
+                    if (file) {
+                        const base64 = await fileToBase64(file);
+                        return { type, base64, filename: file.name };
+                    }
+                    return null;
+                });
+
+                const files = (await Promise.all(filePromises)).filter(file => file !== null);
+
+                // Send files to server-side endpoint for Airtable update
+                const response = await fetch('/upload-to-airtable', { // Replace with your server endpoint
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        candidateName,
+                        files,
+                        airtableBaseId: 'appMvECrw7CrJFCO0',
+                        airtableTableId: 'tblqaH9RrTO6JuG5N',
+                        airtableApiKey: 'AIRTABLE_API_KEY' // Replace with your Airtable API key or handle server-side
+                    })
+                });
+
+                if (response.ok) {
+                    showAlert('Thank you for submitting the documents!');
+                } else {
+                    const errorData = await response.json();
+                    showAlert(`Failed to submit documents: ${errorData.message || 'Unknown error'}`);
+                }
+            } catch (error) {
+                showAlert('Error submitting documents to Airtable.');
+                console.error('Submission error:', error);
+            } finally {
                 submitBtn.innerHTML = 'Submit Documents';
                 submitBtn.disabled = false;
-            }, 1000);
+            }
         }
 
         // Show alert
