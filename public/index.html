@@ -148,7 +148,7 @@
         // Initialize formConfig with query parameters and Airtable data
         async function initializeFormConfig() {
             const params = new URLSearchParams(window.location.search);
-            const candidateName = params.get("candidateName") || 'Unknown Name';
+            const candidateName = params.get("Name") || 'Unknown Name';
             const airtableUrl = `https://api.airtable.com/v0/appMvECrw7CrJFCO0/tblqaH9RrTO6JuG5N?filterByFormula=${encodeURIComponent(`{candidateName}='${candidateName}'`)}`;
 
             // Set default values
