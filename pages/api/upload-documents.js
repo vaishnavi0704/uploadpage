@@ -102,7 +102,97 @@ export default async function handler(req, res) {
     });
   }
 }
+async function submitDocuments() {
+    console.log('🚀 SUBMIT BUTTON CLICKED');
+    
+    const uploadedCount = Object.values(uploadedFiles).filter(file => file !== null).length;
+    if (uploadedCount !== 3) {
+        console.log('❌ Not all files uploaded:', uploadedCount);
+        showAlert('Please upload all three required documents.');
+        return;
+    }
 
+    console.log('✅ All 3 files ready for upload');
+    console.log('Files:', {
+        identity: uploadedFiles.identity?.name,
+        address: uploadedFiles.address?.name,
+        offer: uploadedFiles.offer?.name
+    });
+
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.innerHTML = '<span class="loading"></span>Submitting...';
+    submitBtn.disabled = true;
+
+    // Prepare form data
+    const formData = new FormData();
+    formData.append('candidateEmail', formConfig.candidateEmail || 'test@example.com');
+    formData.append('recordId', formConfig.recordId || 'recbafNpqEanUglbT');
+    formData.append('candidateName', formConfig.candidateName || 'Test User');
+    
+    console.log('📝 Form data:', {
+        candidateEmail: formConfig.candidateEmail || 'test@example.com',
+        recordId: formConfig.recordId || 'recbafNpqEanUglbT',
+        candidateName: formConfig.candidateName || 'Test User'
+    });
+
+    // Add files
+    if (uploadedFiles.identity) {
+        formData.append('identityProof', uploadedFiles.identity);
+        console.log('📎 Added identity proof:', uploadedFiles.identity.name);
+    }
+    if (uploadedFiles.address) {
+        formData.append('addressProof', uploadedFiles.address);
+        console.log('📎 Added address proof:', uploadedFiles.address.name);
+    }
+    if (uploadedFiles.offer) {
+        formData.append('offerLetter', uploadedFiles.offer);
+        console.log('📎 Added offer letter:', uploadedFiles.offer.name);
+    }
+
+    const webhookUrl = 'https://uploadpage-seven.vercel.app/api/upload-documents';
+    console.log('🌐 Sending to:', webhookUrl);
+
+    try {
+        console.log('📤 Making API request...');
+        
+        const response = await fetch(webhookUrl, {
+            method: 'POST',
+            body: formData
+        });
+
+        console.log('📨 Response received:');
+        console.log('- Status:', response.status);
+        console.log('- Status Text:', response.statusText);
+        console.log('- Headers:', Object.fromEntries(response.headers.entries()));
+
+        const responseText = await response.text();
+        console.log('📄 Raw response text:', responseText);
+
+        let result;
+        try {
+            result = JSON.parse(responseText);
+            console.log('📊 Parsed JSON response:', result);
+        } catch (parseError) {
+            console.error('❌ Failed to parse JSON:', parseError);
+            console.log('Raw text was:', responseText);
+        }
+
+        if (response.ok) {
+            console.log('✅ Upload successful!');
+            alert('Documents uploaded successfully! Check Airtable and Vercel logs.');
+        } else {
+            console.error('❌ Upload failed with status:', response.status);
+            alert('Upload failed: ' + (result?.message || result?.error || responseText));
+        }
+
+    } catch (error) {
+        console.error('🚨 Network error:', error);
+        alert('Network error: ' + error.message);
+    } finally {
+        submitBtn.innerHTML = 'Submit Documents';
+        submitBtn.disabled = false;
+    }
+}
 // Convert file to Airtable attachment format (Base64 method)
 async function processFileForAirtable(file) {
   try {
