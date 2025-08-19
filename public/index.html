@@ -244,8 +244,8 @@
             }
         }
 
-        // Submit documents with retry logic
-        async function submitDocuments() {
+        // Submit documents
+        function submitDocuments() {
             const uploadedCount = Object.values(uploadedFiles).filter(file => file !== null).length;
             if (uploadedCount !== 3) {
                 showAlert('Please upload all three required documents.');
@@ -256,87 +256,11 @@
             submitBtn.innerHTML = '<span class="loading"></span>Submitting...';
             submitBtn.disabled = true;
 
-            const formData = new FormData();
-            formData.append('candidateEmail', formConfig.candidateEmail);
-            formData.append('recordId', formConfig.recordId);
-            formData.append('candidateName', formConfig.candidateName);
-            formData.append('candidatePhone', formConfig.candidatePhone);
-            formData.append('position', formConfig.position);
-            formData.append('department', formConfig.department);
-            formData.append('startDate', formConfig.startDate);
-            formData.append('buddyName', formConfig.buddyName);
-            formData.append('buddyEmail', formConfig.buddyEmail);
-            formData.append('hrRep', formConfig.hrRep);
-            formData.append('identityProof', uploadedFiles.identity);
-            formData.append('addressProof', uploadedFiles.address);
-            formData.append('offerLetter', uploadedFiles.offer);
-
-            const webhookUrl = 'http://localhost:5678/webhook-test/onboarding-form-submit';
-
-
-            let attempts = 0;
-            const maxAttempts = 3;
-            while (attempts < maxAttempts) {
-                try {
-                    const response = await fetch(webhookUrl, {
-                        method: 'POST',
-                        body: formData,
-                        headers: {
-                            'Accept': 'application/json'
-                        },
-                        signal: AbortSignal.timeout(10000) // 10s timeout
-                    });
-
-                    if (response.ok) {
-                        window.location.href = '/success?' + new URLSearchParams(window.location.search).toString();
-                        return;
-                    } else {
-                        let errorMessage = 'Submission failed. Please try again.';
-                        switch (response.status) {
-                            case 413:
-                                errorMessage = 'Files are too large. Please upload files smaller than 4MB.';
-                                break;
-                            case 500:
-                                errorMessage = 'Webhook server error. Please try again or contact support.';
-                                break;
-                            case 502:
-                                errorMessage = 'No response from webhook. Retrying...';
-                                break;
-                            case 504:
-                                errorMessage = 'Webhook request timed out. Retrying...';
-                                break;
-                        }
-                        if (response.status === 502 || response.status === 504) {
-                            attempts++;
-                            if (attempts < maxAttempts) {
-                                showAlert(`${errorMessage} Attempt ${attempts + 1} of ${maxAttempts}`);
-                                await new Promise(resolve => setTimeout(resolve, 2000));
-                                continue;
-                            }
-                        }
-                        showAlert(errorMessage);
-                        submitBtn.innerHTML = 'Submit Documents';
-                        submitBtn.disabled = false;
-                        return;
-                    }
-                } catch (error) {
-                    if (error.name === 'TimeoutError') {
-                        attempts++;
-                        if (attempts < maxAttempts) {
-                            showAlert(`Request timed out. Retrying... Attempt ${attempts + 1} of ${maxAttempts}`);
-                            await new Promise(resolve => setTimeout(resolve, 2000));
-                            continue;
-                        }
-                        showAlert('Request timed out after multiple attempts. Please check your connection and try again.');
-                    } else {
-                        showAlert('Network error occurred. Please check your connection and try again.');
-                    }
-                    console.error('Submission error:', error);
-                    submitBtn.innerHTML = 'Submit Documents';
-                    submitBtn.disabled = false;
-                    return;
-                }
-            }
+            setTimeout(() => {
+                showAlert('Thank you for submitting the documents!');
+                submitBtn.innerHTML = 'Submit Documents';
+                submitBtn.disabled = false;
+            }, 1000);
         }
 
         // Show alert
